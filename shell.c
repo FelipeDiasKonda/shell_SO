@@ -5,6 +5,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #define MAX_INPUT 1024
 #define MAX_ARGS 100
@@ -14,6 +16,8 @@
 char **search_paths = NULL;
 int num_paths = 0;
 
+    void execute_batch(char *filename, char *current_path);
+    void execute_external(char **args);
 // Função para dividir a entrada em argumentos
 void parse_input(char *input, char **args) {
     int i = 0;
@@ -24,7 +28,6 @@ void parse_input(char *input, char **args) {
     }
     args[i] = NULL; // Último elemento é NULL para execvp
 }
-
 // Função para executar comandos internos
 int execute_builtin(char **args, char *current_path) {
     if (strcmp(args[0], "exit") == 0) {
@@ -65,26 +68,81 @@ int execute_builtin(char **args, char *current_path) {
         }
         return 1; // Comando interno executado
     }
-       if (strcmp(args[0], "cat") == 0) { // Comando "cat"
-        if (args[1] != NULL) {
-            FILE *file = fopen(args[1], "r");
-            if (file == NULL) {
-                perror("Erro ao abrir arquivo");
+if (strcmp(args[0], "cat") == 0) { // Comando "cat"
+    if (args[1] != NULL) {
+        FILE *file = fopen(args[1], "r");
+        if (file == NULL) {
+            perror("Erro ao abrir arquivo");
+        } else {
+            // Abre o arquivo de saída
+            FILE *output = fopen("output.txt", "w");
+            if (output == NULL) {
+                perror("Erro ao abrir arquivo de saída");
             } else {
                 char line[MAX_INPUT];
                 while (fgets(line, sizeof(line), file) != NULL) { // Lê o arquivo linha por linha
-                    printf("%s", line); // Imprime na saída padrão
+                    fprintf(output, "%s", line); // Escreve no arquivo de saída
                 }
-                fclose(file); // Fecha o arquivo após a leitura
+                fclose(output); // Fecha o arquivo de saída após a escrita
             }
-        } else {
-            fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
+            fclose(file); // Fecha o arquivo após a leitura
         }
-        return 1; // Indica que é um comando interno
+    } else {
+        fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
     }
+    return 1; // Indica que é um comando interno
+}
+
+    if (strcmp(args[0], "batch") == 0) {
+    if (args[1] != NULL) {
+        execute_batch(args[1],current_path);
+    } else {
+        fprintf(stderr, "Erro: nome do arquivo não fornecido para 'batch'.\n");
+    }
+    return 1;
+}
 
     return 0; // Não é um comando interno
 }
+// Função para executar comandos de um arquivo batch
+void execute_batch(char *filename, char *current_path) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Erro ao abrir arquivo batch");
+        return;
+    }
+
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    char *args[MAX_ARGS];
+
+    while ((read = getline(&line, &len, file)) != -1) {  // Lê o arquivo linha por linha
+        if (line[read - 1] == '\n') line[read - 1] = '\0';  // Remove a nova linha no final da entrada
+        parse_input(line, args);  // Divide a entrada em argumentos
+        if (args[0] == NULL) {  // Comando vazio
+            free(line);
+            continue;  // Pule para a próxima linha
+        }
+
+        if (strcmp(args[0], "batch") == 0) {  // Prevenção de loop recursivo
+            fprintf(stderr, "Erro: comando 'batch' não permitido em arquivo batch.\n");
+            free(line);  // Libera a linha lida
+            continue;  // Pule para a próxima linha
+        }
+
+        if (execute_builtin(args, current_path) == 0) {  // Se não é built-in, execute externo
+            execute_external(args);
+        }
+
+        free(line);  // Libera a linha lida para evitar vazamentos de memória
+        line = NULL;  // Necessário para getline alocar memória na próxima leitura
+    }
+
+    fclose(file);  // Fecha o arquivo após a leitura
+}
+
+
 
 // Função para buscar o executável no caminho definido
 char *find_executable(char *program) {
