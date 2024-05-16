@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <fcntl.h>
 
 #define MAX_INPUT 1024
 #define MAX_ARGS 100
@@ -16,8 +17,9 @@
 char **search_paths = NULL;
 int num_paths = 0;
 
-    void execute_batch(char *filename, char *current_path);
-    void execute_external(char **args);
+void execute_batch(char *filename, char *current_path);
+void execute_external(char **args, char *output_file);
+
 // Função para dividir a entrada em argumentos
 void parse_input(char *input, char **args) {
     int i = 0;
@@ -28,8 +30,30 @@ void parse_input(char *input, char **args) {
     }
     args[i] = NULL; // Último elemento é NULL para execvp
 }
+
+int check_output_redirection(char **args, char **output_file) {
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], ">") == 0) {
+            *output_file = args[i + 1];
+            args[i] = NULL;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // Função para executar comandos internos
-int execute_builtin(char **args, char *current_path) {
+int execute_builtin(char **args, char *current_path, char *output_file) {
+    if (output_file != NULL) {
+        int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            perror("Erro ao abrir arquivo de saída");
+            return 1;
+        }
+        dup2(fd, STDOUT_FILENO);
+        close(fd);
+    }
+
     if (strcmp(args[0], "exit") == 0) {
         printf("Saindo do shell.\n");
         exit(0);
@@ -68,7 +92,8 @@ int execute_builtin(char **args, char *current_path) {
         }
         return 1; // Comando interno executado
     }
-if (strcmp(args[0], "cat") == 0) { // Comando "cat"
+
+    if (strcmp(args[0], "cat") == 0) { // Comando "cat"
         if (args[1] != NULL) {
             FILE *file = fopen(args[1], "r");
             if (file == NULL) {
@@ -85,17 +110,19 @@ if (strcmp(args[0], "cat") == 0) { // Comando "cat"
         }
         return 1; // Indica que é um comando interno
     }
+
     if (strcmp(args[0], "batch") == 0) {
-    if (args[1] != NULL) {
-        execute_batch(args[1],current_path);
-    } else {
-        fprintf(stderr, "Erro: nome do arquivo não fornecido para 'batch'.\n");
+        if (args[1] != NULL) {
+            execute_batch(args[1], current_path);
+        } else {
+            fprintf(stderr, "Erro: nome do arquivo não fornecido para 'batch'.\n");
+        }
+        return 1;
     }
-    return 1;
-}
 
     return 0; // Não é um comando interno
 }
+
 // Função para executar comandos de um arquivo batch
 void execute_batch(char *filename, char *current_path) {
     FILE *file = fopen(filename, "r");
@@ -109,32 +136,34 @@ void execute_batch(char *filename, char *current_path) {
     ssize_t read;
     char *args[MAX_ARGS];
 
-    while ((read = getline(&line, &len, file)) != -1) {  // Lê o arquivo linha por linha
-        if (line[read - 1] == '\n') line[read - 1] = '\0';  // Remove a nova linha no final da entrada
-        parse_input(line, args);  // Divide a entrada em argumentos
-        if (args[0] == NULL) {  // Comando vazio
-            free(line);
-            continue;  // Pule para a próxima linha
+    while ((read = getline(&line, &len, file)) != -1) { // Lê o arquivo linha por linha
+        if (line[read - 1] == '\n') line[read - 1] = '\0'; // Remove a nova linha no final da entrada
+        parse_input(line, args); // Divide a entrada em argumentos
+
+        if (args[0] == NULL) { // Comando vazio
+            continue; // Pule para a próxima linha
         }
 
-        if (strcmp(args[0], "batch") == 0) {  // Prevenção de loop recursivo
+        if (strcmp(args[0], "batch") == 0) { // Prevenção de loop recursivo
             fprintf(stderr, "Erro: comando 'batch' não permitido em arquivo batch.\n");
-            free(line);  // Libera a linha lida
-            continue;  // Pule para a próxima linha
+            continue; // Pule para a próxima linha
         }
 
-        if (execute_builtin(args, current_path) == 0) {  // Se não é built-in, execute externo
-            execute_external(args);
+        char *output_file = NULL;
+        if (check_output_redirection(args, &output_file)) {
+            if (execute_builtin(args, current_path, output_file) == 0) { // Se não é built-in, execute externo
+                execute_external(args, output_file);
+            }
+        } else {
+            if (execute_builtin(args, current_path, NULL) == 0) { // Se não é built-in, execute externo
+                execute_external(args, NULL);
+            }
         }
-
-        free(line);  // Libera a linha lida para evitar vazamentos de memória
-        line = NULL;  // Necessário para getline alocar memória na próxima leitura
     }
 
-    fclose(file);  // Fecha o arquivo após a leitura
+    free(line); // Libera a linha lida para evitar vazamentos de memória
+    fclose(file); // Fecha o arquivo após a leitura
 }
-
-
 
 // Função para buscar o executável no caminho definido
 char *find_executable(char *program) {
@@ -149,9 +178,20 @@ char *find_executable(char *program) {
 }
 
 // Função para executar programas externos
-void execute_external(char **args) {
+void execute_external(char **args, char *output_file) {
     pid_t pid = fork();
     if (pid == 0) { // Processo filho
+        // Redireciona a saída, se necessário
+        if (output_file != NULL) {
+            int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                perror("Erro ao abrir arquivo de saída");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+        }
+
         // Encontra o caminho do programa
         char *program = find_executable(args[0]);
         if (program == NULL) {
@@ -191,7 +231,8 @@ int main() {
 
     while (1) { // Laço infinito para manter o shell ativo
         char *username = getlogin();
-        printf("\n%s@%s> ", username,current_path); // Mostra o diretório atual no prompt
+        if (username == NULL) username = "user";
+        printf("\n%s@%s> ", username, current_path); // Mostra o diretório atual no prompt
         if (fgets(input, sizeof(input), stdin) == NULL) { // Lê a entrada do usuário
             if (feof(stdin)) { // Se o shell for interrompido (Ctrl+D)
                 printf("\nSaindo do shell.\n");
@@ -208,8 +249,15 @@ int main() {
             continue;
         }
 
-        if (execute_builtin(args, current_path) == 0) { // Se não é built-in, execute externo
-            execute_external(args);
+        char *output_file = NULL;
+        if (check_output_redirection(args, &output_file)) {
+            if (execute_builtin(args, current_path, output_file) == 0) { // Se não é built-in, execute externo
+                execute_external(args, output_file);
+            }
+        } else {
+            if (execute_builtin(args, current_path, NULL) == 0) { // Se não é built-in, execute externo
+                execute_external(args, NULL);
+            }
         }
     }
 
