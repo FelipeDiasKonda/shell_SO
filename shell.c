@@ -5,8 +5,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
-#include <readline/readline.h>
-#include <readline/history.h>
 #include <fcntl.h>
 
 #define MAX_INPUT 1024
@@ -18,7 +16,10 @@ char **search_paths = NULL;
 int num_paths = 0;
 
 void execute_batch(char *filename, char *current_path);
-void execute_external(char **args, char *output_file);
+int execute_external(char **args, char *output_file);
+void parse_input(char *input, char **args);
+int check_output_redirection(char **args, char **output_file);
+int execute_builtin(char **args, char *current_path, char *output_file);
 
 // Função para dividir a entrada em argumentos
 void parse_input(char *input, char **args) {
@@ -44,22 +45,24 @@ int check_output_redirection(char **args, char **output_file) {
 
 // Função para executar comandos internos
 int execute_builtin(char **args, char *current_path, char *output_file) {
+    int original_stdout = dup(STDOUT_FILENO); // Salva o descritor de arquivo original do stdout
+
     if (output_file != NULL) {
         int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd < 0) {
             perror("Erro ao abrir arquivo de saída");
             return 1;
         }
-        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDOUT_FILENO); // Redireciona stdout para o arquivo
         close(fd);
     }
+
+    int is_builtin = 1;
 
     if (strcmp(args[0], "exit") == 0) {
         printf("Saindo do shell.\n");
         exit(0);
-    }
-
-    if (strcmp(args[0], "cd") == 0) {
+    } else if (strcmp(args[0], "cd") == 0) {
         if (args[1] != NULL) {
             if (chdir(args[1]) != 0) {
                 perror("Erro ao mudar diretório");
@@ -71,10 +74,7 @@ int execute_builtin(char **args, char *current_path, char *output_file) {
         } else {
             fprintf(stderr, "Erro: caminho não fornecido.\n");
         }
-        return 1; // Comando interno executado
-    }
-
-    if (strcmp(args[0], "path") == 0) {
+    } else if (strcmp(args[0], "path") == 0) {
         // Liberar caminhos antigos
         for (int i = 0; i < num_paths; i++) {
             free(search_paths[i]);
@@ -90,10 +90,7 @@ int execute_builtin(char **args, char *current_path, char *output_file) {
             num_paths++;
             i++;
         }
-        return 1; // Comando interno executado
-    }
-
-    if (strcmp(args[0], "cat") == 0) { // Comando "cat"
+    } else if (strcmp(args[0], "cat") == 0) { // Comando "cat"
         if (args[1] != NULL) {
             FILE *file = fopen(args[1], "r");
             if (file == NULL) {
@@ -108,19 +105,23 @@ int execute_builtin(char **args, char *current_path, char *output_file) {
         } else {
             fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
         }
-        return 1; // Indica que é um comando interno
-    }
-
-    if (strcmp(args[0], "batch") == 0) {
+    } else if (strcmp(args[0], "batch") == 0) {
         if (args[1] != NULL) {
             execute_batch(args[1], current_path);
         } else {
             fprintf(stderr, "Erro: nome do arquivo não fornecido para 'batch'.\n");
         }
-        return 1;
+    } else {
+        is_builtin = 0; // Não é um comando interno
     }
 
-    return 0; // Não é um comando interno
+    if (output_file != NULL) {
+        fflush(stdout); // Esvazia o buffer de saída
+        dup2(original_stdout, STDOUT_FILENO); // Restaura o stdout original
+        close(original_stdout);
+    }
+
+    return is_builtin;
 }
 
 // Função para executar comandos de um arquivo batch
@@ -178,18 +179,18 @@ char *find_executable(char *program) {
 }
 
 // Função para executar programas externos
-void execute_external(char **args, char *output_file) {
+int execute_external(char **args, char *output_file) {
     pid_t pid = fork();
     if (pid == 0) { // Processo filho
-        // Redireciona a saída, se necessário
+        // Redireciona a saída se necessário
         if (output_file != NULL) {
-            int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (fd < 0) {
+            int fd_out = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd_out < 0) {
                 perror("Erro ao abrir arquivo de saída");
                 exit(1);
             }
-            dup2(fd, STDOUT_FILENO);
-            close(fd);
+            dup2(fd_out, STDOUT_FILENO);
+            close(fd_out);
         }
 
         // Encontra o caminho do programa
@@ -211,6 +212,7 @@ void execute_external(char **args, char *output_file) {
         waitpid(pid, &status, 0); // Espera pelo filho
         printf("Processo finalizado com status %d.\n", WEXITSTATUS(status));
     }
+    return 0;
 }
 
 int main() {
@@ -222,6 +224,7 @@ int main() {
     char input[MAX_INPUT];
     char *args[MAX_ARGS];
     char current_path[MAX_PATH];
+    char *output_file = NULL; // Inicializa o ponteiro
 
     // Inicializa o caminho atual
     if (getcwd(current_path, sizeof(current_path)) == NULL) {
@@ -249,7 +252,6 @@ int main() {
             continue;
         }
 
-        char *output_file = NULL;
         if (check_output_redirection(args, &output_file)) {
             if (execute_builtin(args, current_path, output_file) == 0) { // Se não é built-in, execute externo
                 execute_external(args, output_file);
