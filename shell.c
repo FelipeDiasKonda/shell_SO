@@ -69,30 +69,22 @@ int execute_builtin(char **args, char *current_path) {
         return 1; // Comando interno executado
     }
 if (strcmp(args[0], "cat") == 0) { // Comando "cat"
-    if (args[1] != NULL) {
-        FILE *file = fopen(args[1], "r");
-        if (file == NULL) {
-            perror("Erro ao abrir arquivo");
-        } else {
-            // Abre o arquivo de saída
-            FILE *output = fopen("output.txt", "w");
-            if (output == NULL) {
-                perror("Erro ao abrir arquivo de saída");
+        if (args[1] != NULL) {
+            FILE *file = fopen(args[1], "r");
+            if (file == NULL) {
+                perror("Erro ao abrir arquivo");
             } else {
                 char line[MAX_INPUT];
                 while (fgets(line, sizeof(line), file) != NULL) { // Lê o arquivo linha por linha
-                    fprintf(output, "%s", line); // Escreve no arquivo de saída
+                    printf("%s", line); // Escreve no terminal
                 }
-                fclose(output); // Fecha o arquivo de saída após a escrita
+                fclose(file); // Fecha o arquivo após a leitura
             }
-            fclose(file); // Fecha o arquivo após a leitura
+        } else {
+            fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
         }
-    } else {
-        fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
+        return 1; // Indica que é um comando interno
     }
-    return 1; // Indica que é um comando interno
-}
-
     if (strcmp(args[0], "batch") == 0) {
     if (args[1] != NULL) {
         execute_batch(args[1],current_path);
