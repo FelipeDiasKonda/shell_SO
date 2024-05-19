@@ -45,83 +45,96 @@ int check_output_redirection(char **args, char **output_file) {
 
 // Função para executar comandos internos
 int execute_builtin(char **args, char *current_path, char *output_file) {
-    int original_stdout = dup(STDOUT_FILENO); // Salva o descritor de arquivo original do stdout
+    pid_t pid = fork();
+    if (pid == 0) { // Processo filho
+        int original_stdout = dup(STDOUT_FILENO); // Salva o descritor de arquivo original do stdout
 
-    if (output_file != NULL) {
-        int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd < 0) {
-            perror("Erro ao abrir arquivo de saída");
-            return 1;
+        if (output_file != NULL) {
+            int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                perror("Erro ao abrir arquivo de saída");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO); // Redireciona stdout para o arquivo
+            close(fd);
         }
-        dup2(fd, STDOUT_FILENO); // Redireciona stdout para o arquivo
-        close(fd);
-    }
 
-    int is_builtin = 1;
+        int is_builtin = 1;
 
-    if (strcmp(args[0], "exit") == 0) {
-        printf("Saindo do shell.\n");
-        exit(0);
-    } else if (strcmp(args[0], "cd") == 0) {
-        if (args[1] != NULL) {
-            if (chdir(args[1]) != 0) {
-                perror("Erro ao mudar diretório");
-            } else {
-                if (getcwd(current_path, MAX_PATH) == NULL) { // Atualiza o diretório atual
-                    perror("Erro ao obter diretório atual");
+        if (strcmp(args[0], "exit") == 0) {
+            printf("Saindo do shell.\n");
+            exit(2); // Retorna 2 para indicar que o comando exit foi chamado
+        } else if (strcmp(args[0], "cd") == 0) {
+            if (args[1] != NULL) {
+                if (chdir(args[1]) != 0) {
+                    perror("Erro ao mudar diretório");
+                } else {
+                    if (getcwd(current_path, MAX_PATH) == NULL) { // Atualiza o diretório atual
+                        perror("Erro ao obter diretório atual");
+                    }
                 }
+            } else {
+                fprintf(stderr, "Erro: caminho não fornecido.\n");
+            }
+        } else if (strcmp(args[0], "path") == 0) {
+            // Liberar caminhos antigos
+            for (int i = 0; i < num_paths; i++) {
+                free(search_paths[i]);
+            }
+            free(search_paths);
+
+            // Redefinir caminhos
+            num_paths = 0;
+            int i = 1;
+            while (args[i] != NULL) {
+                search_paths = realloc(search_paths, sizeof(char *) * (num_paths + 1));
+                search_paths[num_paths] = strdup(args[i]);
+                num_paths++;
+                i++;
+            }
+        } else if (strcmp(args[0], "cat") == 0) { // Comando "cat"
+            if (args[1] != NULL) {
+                FILE *file = fopen(args[1], "r");
+                if (file == NULL) {
+                    perror("Erro ao abrir arquivo");
+                } else {
+                    char line[MAX_INPUT];
+                    while (fgets(line, sizeof(line), file) != NULL) { // Lê o arquivo linha por linha
+                        printf("%s", line); // Escreve no terminal
+                    }
+                    fclose(file); // Fecha o arquivo após a leitura
+                }
+            } else {
+                fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
+            }
+        } else if (strcmp(args[0], "batch") == 0) {
+            if (args[1] != NULL) {
+                execute_batch(args[1], current_path);
+            } else {
+                fprintf(stderr, "Erro: nome do arquivo não fornecido para 'batch'.\n");
             }
         } else {
-            fprintf(stderr, "Erro: caminho não fornecido.\n");
+            is_builtin = 0; // Não é um comando interno
         }
-    } else if (strcmp(args[0], "path") == 0) {
-        // Liberar caminhos antigos
-        for (int i = 0; i < num_paths; i++) {
-            free(search_paths[i]);
-        }
-        free(search_paths);
 
-        // Redefinir caminhos
-        num_paths = 0;
-        int i = 1;
-        while (args[i] != NULL) {
-            search_paths = realloc(search_paths, sizeof(char *) * (num_paths + 1));
-            search_paths[num_paths] = strdup(args[i]);
-            num_paths++;
-            i++;
+        if (output_file != NULL) {
+            fflush(stdout); // Esvazia o buffer de saída
+            dup2(original_stdout, STDOUT_FILENO); // Restaura o stdout original
+            close(original_stdout);
         }
-    } else if (strcmp(args[0], "cat") == 0) { // Comando "cat"
-        if (args[1] != NULL) {
-            FILE *file = fopen(args[1], "r");
-            if (file == NULL) {
-                perror("Erro ao abrir arquivo");
-            } else {
-                char line[MAX_INPUT];
-                while (fgets(line, sizeof(line), file) != NULL) { // Lê o arquivo linha por linha
-                    printf("%s", line); // Escreve no terminal
-                }
-                fclose(file); // Fecha o arquivo após a leitura
-            }
-        } else {
-            fprintf(stderr, "Erro: nome do arquivo não fornecido para 'cat'.\n");
+
+        exit(is_builtin ? 0 : 1); // Se é builtin, termina com sucesso, senão com falha
+    } else if (pid > 0) { // Processo pai
+        int status;
+        waitpid(pid, &status, 0); // Espera pelo filho
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 2) {
+            return 2; // Indica que o comando exit foi chamado
         }
-    } else if (strcmp(args[0], "batch") == 0) {
-        if (args[1] != NULL) {
-            execute_batch(args[1], current_path);
-        } else {
-            fprintf(stderr, "Erro: nome do arquivo não fornecido para 'batch'.\n");
-        }
+        return WEXITSTATUS(status) == 0;
     } else {
-        is_builtin = 0; // Não é um comando interno
+        perror("Erro ao criar processo");
+        return 0;
     }
-
-    if (output_file != NULL) {
-        fflush(stdout); // Esvazia o buffer de saída
-        dup2(original_stdout, STDOUT_FILENO); // Restaura o stdout original
-        close(original_stdout);
-    }
-
-    return is_builtin;
 }
 
 // Função para executar comandos de um arquivo batch
@@ -253,10 +266,16 @@ int main() {
         }
 
         if (check_output_redirection(args, &output_file)) {
+            if (execute_builtin(args, current_path, output_file) == 2) {
+                break; // Sai do loop se o comando 'exit' foi executado
+            }
             if (execute_builtin(args, current_path, output_file) == 0) { // Se não é built-in, execute externo
                 execute_external(args, output_file);
             }
         } else {
+            if (execute_builtin(args, current_path, NULL) == 2) {
+                break; // Sai do loop se o comando 'exit' foi executado
+            }
             if (execute_builtin(args, current_path, NULL) == 0) { // Se não é built-in, execute externo
                 execute_external(args, NULL);
             }
