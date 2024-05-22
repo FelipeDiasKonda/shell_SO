@@ -1,6 +1,6 @@
-# Meu Shell Customizado
+# Shell
 
-Este é um shell customizado desenvolvido em C, capaz de executar comandos internos e externos, incluindo suporte para redirecionamento de saída e execução de scripts batch.
+Este é um shell customizado desenvolvido em C, capaz de executar comandos internos e externos, incluindo suporte para redirecionamento de saída e execução de scripts batch, projeto desevolvido para a disciplina de Sistemas Operacionais.
 
 ## Funcionalidades
 
