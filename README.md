@@ -27,18 +27,12 @@ Este é um shell customizado desenvolvido em C, capaz de executar comandos inter
     ```
     em seguida coloque a senha
 3. Entre no Diretório que esta clonado:
-   no meu caso são os seguintes comandos
-    ```sh
-    cd labs
-    ```
-    ```sh
-    cd trabalho_final
-    ```
+4. 
     ```sh
     cd shell_SO
     ```
 
-4. Compile o código e os arquivos Cat e Ls:
+5. Compile o código e os arquivos Cat e Ls:
     ```sh
     gcc -o shell shell.c -lreadline
     ```
