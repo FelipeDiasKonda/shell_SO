@@ -21,8 +21,24 @@ Este é um shell customizado desenvolvido em C, capaz de executar comandos inter
     git clone https://github.com/seu-usuario/seu-repositorio.git
     cd seu-repositorio
     ```
+2. Inicie a maquina virtual abra o terimnal e logue:
+    ```sh
+    ssh seu_usuario@127.0.0.1 -p2222
+    ```
+    em seguida coloque a senha
+3. Entre no Diretório que esta clonado:
+   no meu caso são os seguintes comandos
+    ```sh
+    cd labs
+    ```
+    ```sh
+    cd trabalho_final
+    ```
+    ```sh
+    cd shell_SO
+    ```
 
-2. Compile o código e os arquivos Cat e Ls:
+4. Compile o código e os arquivos Cat e Ls:
     ```sh
     gcc -o shell shell.c -lreadline
     ```
