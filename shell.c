@@ -161,7 +161,6 @@ char *find_executable(char *program) {
     return NULL;
 }
 
-
 int execute_external(char **args, char *output_file) {
     pid_t pid = fork();
     if (pid == 0) { // Processo filho
@@ -197,11 +196,11 @@ int execute_external(char **args, char *output_file) {
     } else if (pid < 0) {
         perror("Erro ao criar processo");
     } else { // Processo pai
-        return pid; // Retorna o PID do processo filho
+        int status;
+        waitpid(pid, &status, 0);
     }
     return 0;
 }
-
 
 void execute_commands_in_parallel(char *input, char *current_path) {
     char *commands[MAX_ARGS];
@@ -225,17 +224,27 @@ void execute_commands_in_parallel(char *input, char *current_path) {
         }
 
         char *output_file = NULL;
-        if (check_output_redirection(args, &output_file)) {
-            if (execute_builtin(args, current_path, output_file) != 1) {
+        int is_builtin = execute_builtin(args, current_path, NULL);
+
+        if (is_builtin == 0) {
+            // Comando externo, executar em um processo filho
+            if (check_output_redirection(args, &output_file)) {
                 pids[num_pids++] = execute_external(args, output_file);
-            }
-        } else {
-            if (execute_builtin(args, current_path, NULL) != 1) {
+            } else {
                 pids[num_pids++] = execute_external(args, NULL);
             }
+        } else if (is_builtin == 2) {
+            // O comando 'exit' foi chamado, finalizar o shell
+            for (int j = 0; j < num_pids; j++) {
+                if (pids[j] > 0) {
+                    kill(pids[j], SIGKILL); // Finalizar processos filhos se existirem
+                }
+            }
+            exit(0);
         }
     }
 
+    // Esperar pelos processos filhos (comandos externos) terminarem
     for (int i = 0; i < num_pids; i++) {
         if (pids[i] > 0) {
             int status;
