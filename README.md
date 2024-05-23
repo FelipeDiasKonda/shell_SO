@@ -1,6 +1,6 @@
 # Shell
 
-Este é um shell customizado desenvolvido em C, capaz de executar comandos internos e externos, incluindo suporte para redirecionamento de saída e execução de scripts batch, projeto desevolvido para a disciplina de Sistemas Operacionais.
+Este é um shell customizado desenvolvido em C, capaz de executar comandos internos e externos, incluindo suporte para redirecionamento de saída e execução de scripts batch. O projeto foi desenvolvido para a disciplina de Sistemas Operacionais.
 
 ## Funcionalidades
 
@@ -18,8 +18,8 @@ Este é um shell customizado desenvolvido em C, capaz de executar comandos inter
 
 1. Clone o repositório para o seu diretório local:
     ```sh
-    git clone https://github.com/seu-usuario/seu-repositorio.git
-    cd seu-repositorio
+    git clone https://github.com/FelipeDiasKonda/shell_SO.git
+    cd shell_SO
     ```
 2. Inicie a maquina virtual abra o terimnal e logue:
     ```sh
@@ -32,15 +32,18 @@ Este é um shell customizado desenvolvido em C, capaz de executar comandos inter
     cd shell_SO
     ```
 
-4. Compile o código e os arquivos Cat e Ls:
+4. Compile o código e os arquivos Cat e Ls e instale o readline caso necessário:
+    ```sh
+    sudo apt-get install libreadline-dev
+     ```
     ```sh
     gcc -o shell shell.c -lreadline
     ```
     ```sh
-    gcc -o catcopy catcopy.c
+    gcc -o cat catcopy.c
     ```
     ```sh
-    gcc -o lscopy lscopy.c
+    gcc -o ls lscopy.c
     ```
 ## Uso
 
