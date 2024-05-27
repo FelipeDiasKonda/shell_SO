@@ -59,7 +59,7 @@ Este é um shell customizado desenvolvido em C, capaz de executar comandos inter
         cd /caminho/para/diretorio
         ```
 
-    - Listar ou definir caminhos de busca:
+    - Listar ou definir caminhos de busca (nosso path vem como padrão o diretório atual):
         ```sh
         path /caminho_desejado
         ```
