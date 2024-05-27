@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 #define MAX_INPUT 1024
 #define MAX_ARGS 100
@@ -21,6 +22,8 @@ void parse_input(char *input, char **args);
 int check_output_redirection(char **args, char **output_file);
 int execute_builtin(char **args, char *current_path, char *output_file);
 void execute_commands_in_parallel(char *input, char *current_path);
+int is_valid_path(const char *path);
+void add_path(const char *path);
 
 void parse_input(char *input, char **args) {
     int i = 0;
@@ -43,6 +46,40 @@ int check_output_redirection(char **args, char **output_file) {
     return 0;
 }
 
+int is_valid_path(const char *path) {
+    struct stat statbuf;
+    if (stat(path, &statbuf) == 0 && S_ISDIR(statbuf.st_mode)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+void add_path(const char *path) {
+    if (is_valid_path(path)) {
+        for (int i = 0; i < num_paths; i++) {
+            if (strcmp(search_paths[i], path) == 0) {
+                printf("Caminho '%s' já está na lista.\n", path);
+                return;
+            }
+        }
+        search_paths = realloc(search_paths, sizeof(char *) * (num_paths + 1));
+        if (!search_paths) {
+            perror("Erro ao realocar memória");
+            exit(EXIT_FAILURE);
+        }
+        search_paths[num_paths] = strdup(path);
+        if (!search_paths[num_paths]) {
+            perror("Erro ao duplicar string");
+            exit(EXIT_FAILURE);
+        }
+        num_paths++;
+        printf("Caminho '%s' adicionado.\n", path);
+    } else {
+        printf("Caminho '%s' é inválido.\n", path);
+    }
+}
+
 int execute_builtin(char **args, char *current_path, char *output_file) {
     if (strcmp(args[0], "exit") == 0) {
         printf("Saindo do shell.\n");
@@ -61,29 +98,8 @@ int execute_builtin(char **args, char *current_path, char *output_file) {
         }
         return 1;
     } else if (strcmp(args[0], "path") == 0) {
-        // Liberar caminhos antigos
-        for (int i = 0; i < num_paths; i++) {
-            free(search_paths[i]);
-        }
-        free(search_paths);
-
-        // Redefinir caminhos
-        num_paths = 0;
-        search_paths = NULL;
-        int i = 1;
-        while (args[i] != NULL) {
-            search_paths = realloc(search_paths, sizeof(char *) * (num_paths + 1));
-            if (!search_paths) {
-                perror("Erro ao realocar memória");
-                exit(EXIT_FAILURE);
-            }
-            search_paths[num_paths] = strdup(args[i]);
-            if (!search_paths[num_paths]) {
-                perror("Erro ao duplicar string");
-                exit(EXIT_FAILURE);
-            }
-            num_paths++;
-            i++;
+        for (int i = 1; args[i] != NULL; i++) {
+            add_path(args[i]);
         }
         return 1;
     }
